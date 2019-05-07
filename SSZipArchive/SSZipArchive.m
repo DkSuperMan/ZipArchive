@@ -17,6 +17,7 @@ NSString *const SSZipArchiveErrorDomain = @"SSZipArchiveErrorDomain";
 #define CHUNK 16384
 
 int _zipOpenEntry(zipFile entry, NSString *name, const zip_fileinfo *zipfi, int level, NSString *password, BOOL aes);
+int _zipOpenEntryWithEncoding(zipFile entry, NSString *name, const zip_fileinfo *zipfi, int level, NSString *password, BOOL aes, NSStringEncoding encoding);
 BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
 
 #ifndef API_AVAILABLE
@@ -750,9 +751,26 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
            compressionLevel:(int)compressionLevel
                    password:(nullable NSString *)password
                         AES:(BOOL)aes
+            progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler{
+    
+    return [self createZipFileAtPath:path withContentsOfDirectory:directoryPath keepParentDirectory:keepParentDirectory compressionLevel:compressionLevel password:password AES:aes encodingType:SSZipArchiveEncodingTypeDefault progressHandler:progressHandler];
+}
+
++ (BOOL)createZipFileAtPath:(NSString *)path
+    withContentsOfDirectory:(NSString *)directoryPath
+        keepParentDirectory:(BOOL)keepParentDirectory
+           compressionLevel:(int)compressionLevel
+                   password:(nullable NSString *)password
+                        AES:(BOOL)aes
+               encodingType:(SSZipArchiveEncodingType)encodingType
             progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler {
     
     SSZipArchive *zipArchive = [[SSZipArchive alloc] initWithPath:path];
+    zipArchive.encoding = kSSZipArchiveDefaultEncoding;
+    if(encodingType == SSZipArchiveEncodingTypeGBK){
+        NSStringEncoding enc = CFStringConvertEncodingToNSStringEncoding(kCFStringEncodingGB_18030_2000);
+        zipArchive.encoding = enc;
+    }
     BOOL success = [zipArchive open];
     if (success) {
         // use a local fileManager (queue/thread compatibility)
@@ -821,7 +839,14 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
     
     [SSZipArchive zipInfo:&zipInfo setAttributesOfItemAtPath:path];
     
-    int error = _zipOpenEntry(_zip, [folderName stringByAppendingString:@"/"], &zipInfo, Z_NO_COMPRESSION, password, NO);
+    int error = ZIP_OK;
+    
+    if(kSSZipArchiveDefaultEncoding == self.encoding){
+        error = _zipOpenEntry(_zip, [folderName stringByAppendingString:@"/"], &zipInfo, Z_NO_COMPRESSION, password, NO);
+    }else{
+        error = _zipOpenEntryWithEncoding(_zip, [folderName stringByAppendingString:@"/"], &zipInfo, Z_NO_COMPRESSION, password, NO, self.encoding);
+    }
+
     const void *buffer = NULL;
     zipWriteInFileInZip(_zip, buffer, 0);
     zipCloseFileInZip(_zip);
@@ -864,8 +889,12 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
         fclose(input);
         return NO;
     }
-    
-    int error = _zipOpenEntry(_zip, fileName, &zipInfo, compressionLevel, password, aes);
+    int error = ZIP_OK;
+    if(kSSZipArchiveDefaultEncoding == self.encoding){
+        error = _zipOpenEntry(_zip, fileName, &zipInfo, compressionLevel, password, aes);
+    }else{
+        error = _zipOpenEntryWithEncoding(_zip, fileName, &zipInfo, compressionLevel, password, aes, self.encoding);
+    }
     
     while (!feof(input) && !ferror(input))
     {
@@ -1084,6 +1113,13 @@ int _zipOpenEntry(zipFile entry, NSString *name, const zip_fileinfo *zipfi, int 
     // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
     uint16_t made_on_darwin = 19 << 8;
     return zipOpenNewFileInZip5(entry, name.fileSystemRepresentation, zipfi, NULL, 0, NULL, 0, NULL, Z_DEFLATED, level, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, password.UTF8String, aes, made_on_darwin, 0, 0);
+}
+    
+int _zipOpenEntryWithEncoding(zipFile entry, NSString *name, const zip_fileinfo *zipfi, int level, NSString *password, BOOL aes, NSStringEncoding encoding)
+{
+    // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
+    uint16_t made_on_darwin = 19 << 8;
+    return zipOpenNewFileInZip5(entry, [name cStringUsingEncoding:encoding], zipfi, NULL, 0, NULL, 0, NULL, Z_DEFLATED, level, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, password.UTF8String, aes, made_on_darwin, 0, 0);
 }
 
 #pragma mark - Private tools for file info

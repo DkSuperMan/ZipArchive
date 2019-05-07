@@ -24,9 +24,18 @@ typedef NS_ENUM(NSInteger, SSZipArchiveErrorCode) {
     SSZipArchiveErrorCodeInvalidArguments       = -6,
 };
 
+typedef NS_ENUM(NSInteger, SSZipArchiveEncodingType) {
+    SSZipArchiveEncodingTypeDefault,
+    SSZipArchiveEncodingTypeGBK,
+};
+
+#define kSSZipArchiveDefaultEncoding -1
+
 @protocol SSZipArchiveDelegate;
 
 @interface SSZipArchive : NSObject
+
+@property(assign,nonatomic)NSStringEncoding encoding;
 
 // Password check
 + (BOOL)isFilePasswordProtectedAtPath:(NSString *)path;
@@ -106,6 +115,14 @@ typedef NS_ENUM(NSInteger, SSZipArchiveErrorCode) {
            compressionLevel:(int)compressionLevel
                    password:(nullable NSString *)password
                         AES:(BOOL)aes
+            progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
++ (BOOL)createZipFileAtPath:(NSString *)path
+    withContentsOfDirectory:(NSString *)directoryPath
+        keepParentDirectory:(BOOL)keepParentDirectory
+           compressionLevel:(int)compressionLevel
+                   password:(nullable NSString *)password
+                        AES:(BOOL)aes
+               encodingType:(SSZipArchiveEncodingType)encodingType
             progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
 
 - (instancetype)init NS_UNAVAILABLE;
