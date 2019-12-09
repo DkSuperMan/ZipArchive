@@ -41,6 +41,9 @@ typedef NS_ENUM(NSInteger, SSZipArchiveEncodingType) {
 + (BOOL)isFilePasswordProtectedAtPath:(NSString *)path;
 + (BOOL)isPasswordValidForArchiveAtPath:(NSString *)path password:(NSString *)pw error:(NSError * _Nullable * _Nullable)error NS_SWIFT_NOTHROW;
 
+// Total payload size
++ (NSNumber *)payloadSizeForArchiveAtPath:(NSString *)path error:(NSError **)error;
+
 // Unzip
 + (BOOL)unzipFileAtPath:(NSString *)path toDestination:(NSString *)destination;
 + (BOOL)unzipFileAtPath:(NSString *)path toDestination:(NSString *)destination delegate:(nullable id<SSZipArchiveDelegate>)delegate;
