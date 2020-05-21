@@ -33,7 +33,7 @@ class ViewController: NSViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
         
-        samplePath = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Sample Data").path
+        samplePath = (NSTemporaryDirectory() as NSString).appendingPathComponent("test")
         print("Sample path:", samplePath!)
         
         resetPressed(resetButton)

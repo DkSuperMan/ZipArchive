@@ -119,14 +119,15 @@ typedef NS_ENUM(NSInteger, SSZipArchiveEncodingType) {
                    password:(nullable NSString *)password
                         AES:(BOOL)aes
             progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
+
 + (BOOL)createZipFileAtPath:(NSString *)path
-    withContentsOfDirectory:(NSString *)directoryPath
-        keepParentDirectory:(BOOL)keepParentDirectory
-           compressionLevel:(int)compressionLevel
-                   password:(nullable NSString *)password
-                        AES:(BOOL)aes
-               encodingType:(SSZipArchiveEncodingType)encodingType
-            progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
+withContentsOfDirectory:(NSString *)directoryPath
+    keepParentDirectory:(BOOL)keepParentDirectory
+       compressionLevel:(int)compressionLevel
+               password:(nullable NSString *)password
+                    AES:(BOOL)aes
+           encodingType:(SSZipArchiveEncodingType)encodingType
+        progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
 
 - (instancetype)init NS_UNAVAILABLE;
 - (instancetype)initWithPath:(NSString *)path NS_DESIGNATED_INITIALIZER;

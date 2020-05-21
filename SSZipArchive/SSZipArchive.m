@@ -802,9 +802,51 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
            compressionLevel:(int)compressionLevel
                    password:(nullable NSString *)password
                         AES:(BOOL)aes
-            progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler{
+            progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler {
     
-    return [self createZipFileAtPath:path withContentsOfDirectory:directoryPath keepParentDirectory:keepParentDirectory compressionLevel:compressionLevel password:password AES:aes encodingType:SSZipArchiveEncodingTypeDefault progressHandler:progressHandler];
+    SSZipArchive *zipArchive = [[SSZipArchive alloc] initWithPath:path];
+    BOOL success = [zipArchive open];
+    if (success) {
+        // use a local fileManager (queue/thread compatibility)
+        NSFileManager *fileManager = [[NSFileManager alloc] init];
+        NSDirectoryEnumerator *dirEnumerator = [fileManager enumeratorAtPath:directoryPath];
+        NSArray<NSString *> *allObjects = dirEnumerator.allObjects;
+        NSUInteger total = allObjects.count, complete = 0;
+        if (keepParentDirectory && !total) {
+            allObjects = @[@""];
+            total = 1;
+        }
+        for (__strong NSString *fileName in allObjects) {
+            NSString *fullFilePath = [directoryPath stringByAppendingPathComponent:fileName];
+            if ([fullFilePath isEqualToString:path]) {
+                NSLog(@"[SSZipArchive] the archive path and the file path: %@ are the same, which is forbidden.", fullFilePath);
+                continue;
+            }
+			
+            if (keepParentDirectory) {
+                fileName = [directoryPath.lastPathComponent stringByAppendingPathComponent:fileName];
+            }
+            
+            BOOL isDir;
+            [fileManager fileExistsAtPath:fullFilePath isDirectory:&isDir];
+            if (!isDir) {
+                // file
+                success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes];
+            } else {
+                // directory
+                if (![fileManager enumeratorAtPath:fullFilePath].nextObject) {
+                    // empty directory
+                    success &= [zipArchive writeFolderAtPath:fullFilePath withFolderName:fileName withPassword:password];
+                }
+            }
+            if (progressHandler) {
+                complete++;
+                progressHandler(complete, total);
+            }
+        }
+        success &= [zipArchive close];
+    }
+    return success;
 }
 
 + (BOOL)createZipFileAtPath:(NSString *)path
@@ -897,7 +939,7 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
     }else{
         error = _zipOpenEntryWithEncoding(_zip, [folderName stringByAppendingString:@"/"], &zipInfo, Z_NO_COMPRESSION, password, NO, self.encoding);
     }
-
+    
     const void *buffer = NULL;
     zipWriteInFileInZip(_zip, buffer, 0);
     zipCloseFileInZip(_zip);
@@ -940,6 +982,7 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
         fclose(input);
         return NO;
     }
+    
     int error = ZIP_OK;
     if(kSSZipArchiveDefaultEncoding == self.encoding){
         error = _zipOpenEntry(_zip, fileName, &zipInfo, compressionLevel, password, aes);
@@ -1163,14 +1206,16 @@ int _zipOpenEntry(zipFile entry, NSString *name, const zip_fileinfo *zipfi, int 
 {
     // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
     uint16_t made_on_darwin = 19 << 8;
-    return zipOpenNewFileInZip5(entry, name.fileSystemRepresentation, zipfi, NULL, 0, NULL, 0, NULL, Z_DEFLATED, level, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, password.UTF8String, aes, made_on_darwin, 0, 0);
+    //MZ_ZIP_FLAG_UTF8
+    uint16_t flag_base = 1 << 11;
+    return zipOpenNewFileInZip5(entry, name.fileSystemRepresentation, zipfi, NULL, 0, NULL, 0, NULL, Z_DEFLATED, level, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, password.UTF8String, aes, made_on_darwin, flag_base, 1);
 }
     
 int _zipOpenEntryWithEncoding(zipFile entry, NSString *name, const zip_fileinfo *zipfi, int level, NSString *password, BOOL aes, NSStringEncoding encoding)
 {
     // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
     uint16_t made_on_darwin = 19 << 8;
-    return zipOpenNewFileInZip5(entry, [name cStringUsingEncoding:encoding], zipfi, NULL, 0, NULL, 0, NULL, Z_DEFLATED, level, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, password.UTF8String, aes, made_on_darwin, 0, 0);
+    return zipOpenNewFileInZip5(entry, [name cStringUsingEncoding:encoding], zipfi, NULL, 0, NULL, 0, NULL, Z_DEFLATED, level, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, password.UTF8String, aes, made_on_darwin, 0, 1);
 }
 
 #pragma mark - Private tools for file info
