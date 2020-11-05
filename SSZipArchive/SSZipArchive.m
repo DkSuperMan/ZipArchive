@@ -811,11 +811,16 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
         NSFileManager *fileManager = [[NSFileManager alloc] init];
         NSDirectoryEnumerator *dirEnumerator = [fileManager enumeratorAtPath:directoryPath];
         NSArray<NSString *> *allObjects = dirEnumerator.allObjects;
-        NSUInteger total = allObjects.count, complete = 0;
+        NSUInteger total = allObjects.count;
         if (keepParentDirectory && !total) {
             allObjects = @[@""];
             total = 1;
         }
+        
+        NSUInteger folderSize = [SSZipArchive folderSize:directoryPath];
+        
+        __block NSUInteger writeSize = 0;
+        
         for (__strong NSString *fileName in allObjects) {
             NSString *fullFilePath = [directoryPath stringByAppendingPathComponent:fileName];
             if ([fullFilePath isEqualToString:path]) {
@@ -831,17 +836,24 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
             [fileManager fileExistsAtPath:fullFilePath isDirectory:&isDir];
             if (!isDir) {
                 // file
-                success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes];
+                success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes writeProgressHandler:^(NSUInteger write, NSUInteger total) {
+                    
+                    writeSize += write;
+                    
+                    if(writeSize <= folderSize){
+                        
+                        if (progressHandler) {
+                            progressHandler(writeSize, folderSize);
+                        }
+                    }
+                    
+                }];
             } else {
                 // directory
                 if (![fileManager enumeratorAtPath:fullFilePath].nextObject) {
                     // empty directory
                     success &= [zipArchive writeFolderAtPath:fullFilePath withFolderName:fileName withPassword:password];
                 }
-            }
-            if (progressHandler) {
-                complete++;
-                progressHandler(complete, total);
             }
         }
         success &= [zipArchive close];
@@ -870,11 +882,16 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
         NSFileManager *fileManager = [[NSFileManager alloc] init];
         NSDirectoryEnumerator *dirEnumerator = [fileManager enumeratorAtPath:directoryPath];
         NSArray<NSString *> *allObjects = dirEnumerator.allObjects;
-        NSUInteger total = allObjects.count, complete = 0;
+        NSUInteger total = allObjects.count;
         if (keepParentDirectory && !total) {
             allObjects = @[@""];
             total = 1;
         }
+        
+        NSUInteger folderSize = [SSZipArchive folderSize:directoryPath];
+        
+        __block NSUInteger writeSize = 0;
+        
         for (__strong NSString *fileName in allObjects) {
             NSString *fullFilePath = [directoryPath stringByAppendingPathComponent:fileName];
             
@@ -886,17 +903,22 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
             [fileManager fileExistsAtPath:fullFilePath isDirectory:&isDir];
             if (!isDir) {
                 // file
-                success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes];
+                success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes writeProgressHandler:^(NSUInteger write, NSUInteger total) {
+                    
+                    writeSize += write;
+                    
+                    if(writeSize <= folderSize){
+                        if (progressHandler) {
+                            progressHandler(writeSize, folderSize);
+                        }
+                    }
+                }];
             } else {
                 // directory
                 if (![fileManager enumeratorAtPath:fullFilePath].nextObject) {
                     // empty directory
                     success &= [zipArchive writeFolderAtPath:fullFilePath withFolderName:fileName withPassword:password];
                 }
-            }
-            if (progressHandler) {
-                complete++;
-                progressHandler(complete, total);
             }
         }
         success &= [zipArchive close];
@@ -953,13 +975,13 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
 
 - (BOOL)writeFileAtPath:(NSString *)path withFileName:(nullable NSString *)fileName withPassword:(nullable NSString *)password
 {
-    return [self writeFileAtPath:path withFileName:fileName compressionLevel:Z_DEFAULT_COMPRESSION password:password AES:YES];
+    return [self writeFileAtPath:path withFileName:fileName compressionLevel:Z_DEFAULT_COMPRESSION password:password AES:YES writeProgressHandler:nil];
 }
 
 // supports writing files with logical folder/directory structure
 // *path* is the absolute path of the file that will be compressed
 // *fileName* is the relative name of the file how it is stored within the zip e.g. /folder/subfolder/text1.txt
-- (BOOL)writeFileAtPath:(NSString *)path withFileName:(nullable NSString *)fileName compressionLevel:(int)compressionLevel password:(nullable NSString *)password AES:(BOOL)aes
+- (BOOL)writeFileAtPath:(NSString *)path withFileName:(nullable NSString *)fileName compressionLevel:(int)compressionLevel password:(nullable NSString *)password AES:(BOOL)aes writeProgressHandler:(void(^ _Nullable)(NSUInteger write, NSUInteger total))writeProgressHandler
 {
     NSAssert((_zip != NULL), @"Attempting to write to an archive which was never opened");
     
@@ -973,6 +995,11 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
     }
     
     zip_fileinfo zipInfo = {};
+    
+    NSDictionary* fileAttributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+    NSUInteger tmpFileSize = [[fileAttributes objectForKey:NSFileSize] unsignedLongValue];
+    NSUInteger fileSize = (tmpFileSize != 0) ? tmpFileSize : 1;
+    NSUInteger readSize = 0;
     
     [SSZipArchive zipInfo:&zipInfo setAttributesOfItemAtPath:path];
     
@@ -994,6 +1021,9 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
     {
         unsigned int len = (unsigned int) fread(buffer, 1, CHUNK, input);
         zipWriteInFileInZip(_zip, buffer, len);
+        if(writeProgressHandler){
+            writeProgressHandler(len, fileSize);
+        }
     }
     
     zipCloseFileInZip(_zip);
@@ -1211,6 +1241,22 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
     
     NSDate *date = [self._gregorian dateFromComponents:components];
     return date;
+}
+    
++ (NSUInteger)folderSize:(NSString *)folderPath {
+    
+    NSArray *filesArray = [[NSFileManager defaultManager] subpathsOfDirectoryAtPath:folderPath error:nil];
+    NSEnumerator *filesEnumerator = [filesArray objectEnumerator];
+    NSString *fileName;
+    unsigned long long int fileSize = 0;
+
+    while (fileName = [filesEnumerator nextObject]) {
+        NSString* filePath = [folderPath stringByAppendingPathComponent:fileName];
+        NSDictionary *fileDictionary = [[NSFileManager defaultManager] attributesOfItemAtPath:filePath error:nil];
+        fileSize += [fileDictionary fileSize];
+    }
+
+    return fileSize;
 }
 
 @end

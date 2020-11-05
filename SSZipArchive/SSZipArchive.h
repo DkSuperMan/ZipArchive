@@ -138,7 +138,7 @@ withContentsOfDirectory:(NSString *)directoryPath
 /// write file
 - (BOOL)writeFile:(NSString *)path withPassword:(nullable NSString *)password;
 - (BOOL)writeFileAtPath:(NSString *)path withFileName:(nullable NSString *)fileName withPassword:(nullable NSString *)password;
-- (BOOL)writeFileAtPath:(NSString *)path withFileName:(nullable NSString *)fileName compressionLevel:(int)compressionLevel password:(nullable NSString *)password AES:(BOOL)aes;
+- (BOOL)writeFileAtPath:(NSString *)path withFileName:(nullable NSString *)fileName compressionLevel:(int)compressionLevel password:(nullable NSString *)password AES:(BOOL)aes writeProgressHandler:(void(^ _Nullable)(NSUInteger write, NSUInteger total))writeProgressHandler;
 /// write data
 - (BOOL)writeData:(NSData *)data filename:(nullable NSString *)filename withPassword:(nullable NSString *)password;
 - (BOOL)writeData:(NSData *)data filename:(nullable NSString *)filename compressionLevel:(int)compressionLevel password:(nullable NSString *)password AES:(BOOL)aes;
